@@ -2,7 +2,9 @@
 
 Скрипт рекурсивно обходит указанную папку, считает SHA-256 для каждого
 обычного файла и выводит группы файлов, у которых совпадает контрольная
-сумма. Результат записывается одновременно в консоль и в log-файл.
+сумма. Внутри каждой группы файлы сортируются по имени и выводятся в
+формате "имя файла | папка". Результат записывается одновременно в консоль
+и в log-файл.
 """
 
 from __future__ import annotations
@@ -106,7 +108,11 @@ def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path
 def log_duplicates(
     duplicates: dict[str, list[Path]], logger: logging.Logger, log_path: Path
 ) -> None:
-    """Выводит найденные группы дубликатов через логгер."""
+    """Выводит группы дубликатов в формате ``имя файла | папка``.
+
+    Внутри каждой группы файлы сортируются по имени, затем по папке, чтобы
+    одинаковые имена располагались рядом.
+    """
     if not duplicates:
         logger.info("Дубликаты не найдены.")
         logger.info("Log-файл: %s", log_path.resolve())
@@ -117,8 +123,14 @@ def log_duplicates(
     for checksum, paths in sorted(duplicates.items()):
         logger.info("")
         logger.info("Контрольная сумма: %s", checksum)
-        for path in sorted(paths):
-            logger.info("  %s", path)
+        for path in sorted(
+            paths,
+            key=lambda path: (
+                path.name.casefold(),
+                str(path.parent).casefold(),
+            ),
+        ):
+            logger.info("  %s | %s", path.name, path.parent)
 
     logger.info("Log-файл: %s", log_path.resolve())
 
@@ -137,7 +149,7 @@ def main() -> int:
         logger.info("Log-файл: %s", log_path.resolve())
         return 1
 
-    logger.info("Начинаю проверку папки.")
+    logger.info("Начинаю проверку папки...")
     duplicates = find_duplicates(folder, logger)
     log_duplicates(duplicates, logger, log_path)
     return 0
