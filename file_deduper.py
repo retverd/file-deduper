@@ -3,8 +3,8 @@
 Скрипт рекурсивно обходит указанную папку, считает SHA-256 для каждого
 обычного файла и выводит группы файлов, у которых совпадает контрольная
 сумма. Внутри каждой группы файлы сортируются по имени и выводятся в
-формате "имя файла | папка". Результат записывается одновременно в консоль
-и в log-файл.
+формате "имя файла | размер | папка". Результат записывается одновременно в
+консоль и в log-файл.
 """
 
 from __future__ import annotations
@@ -85,6 +85,21 @@ def calculate_checksum(file_path: Path) -> str:
     return digest.hexdigest()
 
 
+def format_size(size_bytes: int) -> str:
+    """Форматирует размер файла в человекоудобный вид."""
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(size_bytes)
+
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{size_bytes} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+
+    return f"{size_bytes} B"
+
+
 def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path]]:
     """Находит группы файлов с одинаковыми контрольными суммами.
 
@@ -108,7 +123,7 @@ def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path
 def log_duplicates(
     duplicates: dict[str, list[Path]], logger: logging.Logger, log_path: Path
 ) -> None:
-    """Выводит группы дубликатов в формате ``имя файла | папка``.
+    """Выводит группы дубликатов в формате ``имя файла | размер | папка``.
 
     Внутри каждой группы файлы сортируются по имени, затем по папке, чтобы
     одинаковые имена располагались рядом.
@@ -119,10 +134,13 @@ def log_duplicates(
         return
 
     logger.info("Найдены файлы с одинаковым содержимым:")
+    reclaimable_bytes = 0
 
     for checksum, paths in sorted(duplicates.items()):
         logger.info("")
         logger.info("Контрольная сумма: %s", checksum)
+        file_size = paths[0].stat().st_size
+        reclaimable_bytes += file_size * (len(paths) - 1)
         for path in sorted(
             paths,
             key=lambda path: (
@@ -130,8 +148,15 @@ def log_duplicates(
                 str(path.parent).casefold(),
             ),
         ):
-            logger.info("  %s | %s", path.name, path.parent)
+            logger.info(
+                "  %s | %s | %s",
+                path.name,
+                format_size(path.stat().st_size),
+                path.parent,
+            )
 
+    logger.info("")
+    logger.info("Можно освободить до %s места!", format_size(reclaimable_bytes))
     logger.info("Log-файл: %s", log_path.resolve())
 
 
