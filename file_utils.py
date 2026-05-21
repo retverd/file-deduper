@@ -6,9 +6,10 @@ import hashlib
 import logging
 import re
 import sys
+from argparse import ArgumentTypeError
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 BLOCK_SIZE = 1024 * 1024
 
@@ -75,14 +76,14 @@ def format_size(size_bytes: int) -> str:
     units = ("B", "KB", "MB", "GB", "TB")
     size = float(size_bytes)
 
-    for unit in units:
-        if size < 1024 or unit == units[-1]:
+    for unit in units[:-1]:
+        if size < 1024:
             if unit == "B":
                 return f"{size_bytes} {unit}"
             return f"{size:.1f} {unit}"
         size /= 1024
 
-    return f"{size_bytes} B"
+    return f"{size:.1f} {units[-1]}"
 
 
 def compile_skip_dir_name_regex(value: str) -> re.Pattern[str]:
@@ -90,4 +91,6 @@ def compile_skip_dir_name_regex(value: str) -> re.Pattern[str]:
     try:
         return re.compile(value)
     except re.error as error:
-        raise AttributeError(f"Некорректное регулярное выражение: {error}") from error
+        raise ArgumentTypeError(
+            f"Некорректное регулярное выражение: {error}"
+        ) from error

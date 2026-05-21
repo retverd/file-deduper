@@ -41,7 +41,7 @@ def parse_args() -> Namespace:
         "--skip-dir-name-regex",
         type=compile_skip_dir_name_regex,
         default=None,
-        help="Регулярное выражение для имени папки, которую нужно пропустить при обходе.",
+        help="Регулярное выражение для имени папки, пропускаемой при обходе.",
     )
     return parser.parse_args()
 
@@ -101,7 +101,7 @@ def log_duplicates(
             logger.info(
                 "  %s | %s | %s",
                 path.name,
-                format_size(path.stat().st_size),
+                format_size(file_size),
                 path.parent,
             )
 

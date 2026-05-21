@@ -34,7 +34,6 @@ class FileRecord:
     checksum: str
     size: int
     relative_path: str
-    relative_dir: str
     name: str
 
     @property
@@ -60,7 +59,7 @@ def parse_args() -> Namespace:
         "--skip-dir-name-regex",
         type=compile_skip_dir_name_regex,
         default=None,
-        help="Регулярное выражение для имени папки, которую нужно пропустить при обходе.",
+        help="Регулярное выражение для имени папки, пропускаемой при обходе.",
     )
     return parser.parse_args()
 
@@ -68,7 +67,6 @@ def parse_args() -> Namespace:
 def build_file_record(root: Path, file_path: Path) -> FileRecord:
     """Создает запись о файле относительно корневой папки."""
     relative_path = file_path.relative_to(root)
-    relative_dir = relative_path.parent
     checksum = calculate_checksum(file_path)
     size = file_path.stat().st_size
 
@@ -76,7 +74,6 @@ def build_file_record(root: Path, file_path: Path) -> FileRecord:
         checksum=checksum,
         size=size,
         relative_path=str(relative_path),
-        relative_dir="." if str(relative_dir) == "." else str(relative_dir),
         name=file_path.name,
     )
 
@@ -85,19 +82,22 @@ def index_folder(
     folder: Path,
     logger: Logger,
     skip_dir_name_pattern: Pattern[str] | None = None,
-) -> tuple[list[FileRecord], list[tuple[Path, OSError]]]:
-    """Собирает записи о файлах в папке и ошибки чтения."""
+) -> tuple[list[FileRecord], bool]:
+    """Собирает записи о файлах в папке.
+
+    Возвращает список записей и признак того, что при чтении были ошибки.
+    """
     records: list[FileRecord] = []
-    errors: list[tuple[Path, OSError]] = []
+    had_read_errors = False
 
     for file_path in iter_files(folder, skip_dir_name_pattern):
         try:
             records.append(build_file_record(folder, file_path))
         except OSError as error:
             logger.warning("Не удалось прочитать файл %s: %s", file_path, error)
-            errors.append((file_path, error))
+            had_read_errors = True
 
-    return records, errors
+    return records, had_read_errors
 
 
 def identity_counter(records: list[FileRecord]) -> Counter[tuple[str, str]]:
@@ -119,6 +119,8 @@ def records_with_common_hash_metadata_diff(
     first_diff: list[FileRecord] = []
     second_diff: list[FileRecord] = []
 
+    # Сопоставляем файлы с одинаковым (hash, path) как элементы мультимножеств:
+    # совпавшие пары «погашаются», остаток попадает в diff соответствующей стороны.
     for record in first_records:
         if record.checksum in common_hashes and second_counter[record.identity] <= 0:
             first_diff.append(record)
@@ -273,15 +275,17 @@ def main() -> int:
         logger.info("Log-файл: %s", log_path.resolve())
         return 1
 
+    logger.info("%s", first_folder)
+    logger.info("%s", second_folder)
     logger.info("Начинаю сравнение папок...")
-    first_records, first_errors = index_folder(
+    first_records, first_had_read_errors = index_folder(
         first_folder, logger, args.skip_dir_name_regex
     )
-    second_records, second_errors = index_folder(
+    second_records, second_had_read_errors = index_folder(
         second_folder, logger, args.skip_dir_name_regex
     )
 
-    if first_errors or second_errors:
+    if first_had_read_errors or second_had_read_errors:
         logger.error("Сравнение остановлено из-за ошибок чтения файлов.")
         logger.info("Log-файл: %s", log_path.resolve())
         return 1
