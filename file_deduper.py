@@ -9,14 +9,16 @@
 
 from __future__ import annotations
 
-import argparse
-import logging
+from argparse import ArgumentParser, Namespace
 from collections import defaultdict
+from logging import Logger
 from pathlib import Path
+from re import Pattern
 
 from file_utils import (
     build_log_path,
     calculate_checksum,
+    compile_skip_dir_name_regex,
     configure_logger,
     format_size,
     iter_files,
@@ -25,9 +27,9 @@ from file_utils import (
 LOGGER_NAME = "file_deduper"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> Namespace:
     """Разбирает аргументы командной строки."""
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description="Находит файлы с одинаковым содержимым по SHA-256."
     )
     parser.add_argument(
@@ -35,10 +37,20 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Путь к папке, которую нужно проверить.",
     )
+    parser.add_argument(
+        "--skip-dir-name-regex",
+        type=compile_skip_dir_name_regex,
+        default=None,
+        help="Регулярное выражение для имени папки, которую нужно пропустить при обходе.",
+    )
     return parser.parse_args()
 
 
-def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path]]:
+def find_duplicates(
+    folder: Path,
+    logger: Logger,
+    skip_dir_name_pattern: Pattern[str] | None = None,
+) -> dict[str, list[Path]]:
     """Находит группы файлов с одинаковыми контрольными суммами.
 
     Возвращает словарь, где ключом является SHA-256, а значением - список
@@ -46,7 +58,7 @@ def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path
     """
     checksums: dict[str, list[Path]] = defaultdict(list)
 
-    for file_path in iter_files(folder):
+    for file_path in iter_files(folder, skip_dir_name_pattern):
         try:
             checksum = calculate_checksum(file_path)
         except OSError as error:
@@ -59,7 +71,7 @@ def find_duplicates(folder: Path, logger: logging.Logger) -> dict[str, list[Path
 
 
 def log_duplicates(
-    duplicates: dict[str, list[Path]], logger: logging.Logger, log_path: Path
+    duplicates: dict[str, list[Path]], logger: Logger, log_path: Path
 ) -> None:
     """Выводит группы дубликатов в формате ``имя файла | размер | папка``.
 
@@ -113,7 +125,7 @@ def main() -> int:
         return 1
 
     logger.info("Начинаю проверку папки...")
-    duplicates = find_duplicates(folder, logger)
+    duplicates = find_duplicates(folder, logger, args.skip_dir_name_regex)
     log_duplicates(duplicates, logger, log_path)
     return 0
 

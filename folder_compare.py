@@ -8,15 +8,17 @@
 
 from __future__ import annotations
 
-import argparse
-import logging
+from argparse import ArgumentParser, Namespace
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from logging import Logger
 from pathlib import Path
+from re import Pattern
 
 from file_utils import (
     build_log_path,
     calculate_checksum,
+    compile_skip_dir_name_regex,
     configure_logger,
     format_size,
     iter_files,
@@ -41,11 +43,9 @@ class FileRecord:
         return self.checksum, self.relative_path
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> Namespace:
     """Разбирает аргументы командной строки."""
-    parser = argparse.ArgumentParser(
-        description="Сравнивает содержимое двух папок по SHA-256."
-    )
+    parser = ArgumentParser(description="Сравнивает содержимое двух папок по SHA-256.")
     parser.add_argument(
         "first_folder",
         type=Path,
@@ -55,6 +55,12 @@ def parse_args() -> argparse.Namespace:
         "second_folder",
         type=Path,
         help="Путь ко второй папке.",
+    )
+    parser.add_argument(
+        "--skip-dir-name-regex",
+        type=compile_skip_dir_name_regex,
+        default=None,
+        help="Регулярное выражение для имени папки, которую нужно пропустить при обходе.",
     )
     return parser.parse_args()
 
@@ -76,13 +82,15 @@ def build_file_record(root: Path, file_path: Path) -> FileRecord:
 
 
 def index_folder(
-    folder: Path, logger: logging.Logger
+    folder: Path,
+    logger: Logger,
+    skip_dir_name_pattern: Pattern[str] | None = None,
 ) -> tuple[list[FileRecord], list[tuple[Path, OSError]]]:
     """Собирает записи о файлах в папке и ошибки чтения."""
     records: list[FileRecord] = []
     errors: list[tuple[Path, OSError]] = []
 
-    for file_path in iter_files(folder):
+    for file_path in iter_files(folder, skip_dir_name_pattern):
         try:
             records.append(build_file_record(folder, file_path))
         except OSError as error:
@@ -144,7 +152,7 @@ def sort_by_path_name(record: FileRecord) -> tuple[str, str]:
     return record.relative_path.casefold(), record.name.casefold()
 
 
-def log_record(record: FileRecord, logger: logging.Logger, indent: str = "  ") -> None:
+def log_record(record: FileRecord, logger: Logger, indent: str = "  ") -> None:
     """Выводит одну запись о файле."""
     logger.info(
         "%s%s | %s | %s",
@@ -160,7 +168,7 @@ def log_metadata_differences(
     second_records: list[FileRecord],
     first_folder: Path,
     second_folder: Path,
-    logger: logging.Logger,
+    logger: Logger,
 ) -> None:
     """Выводит различия путей и имен для файлов с совпадающим SHA-256."""
     if not first_records and not second_records:
@@ -196,7 +204,7 @@ def log_metadata_differences(
 
 
 def log_unique_hash_records(
-    title: str, records: list[FileRecord], logger: logging.Logger
+    title: str, records: list[FileRecord], logger: Logger
 ) -> None:
     """Выводит файлы, SHA-256 которых нет в другой папке."""
     if not records:
@@ -213,7 +221,7 @@ def log_comparison_result(
     second_records: list[FileRecord],
     first_folder: Path,
     second_folder: Path,
-    logger: logging.Logger,
+    logger: Logger,
     log_path: Path,
 ) -> None:
     """Выводит результат сравнения двух папок."""
@@ -266,8 +274,12 @@ def main() -> int:
         return 1
 
     logger.info("Начинаю сравнение папок...")
-    first_records, first_errors = index_folder(first_folder, logger)
-    second_records, second_errors = index_folder(second_folder, logger)
+    first_records, first_errors = index_folder(
+        first_folder, logger, args.skip_dir_name_regex
+    )
+    second_records, second_errors = index_folder(
+        second_folder, logger, args.skip_dir_name_regex
+    )
 
     if first_errors or second_errors:
         logger.error("Сравнение остановлено из-за ошибок чтения файлов.")

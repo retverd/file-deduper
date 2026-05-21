@@ -22,6 +22,14 @@ python file_deduper.py /path/to/folder
 python file_deduper.py "C:\Users\user\Documents"
 ```
 
+Чтобы пропустить папки по имени при обходе, передайте регулярное выражение в
+`--skip-dir-name-regex`. Выражение применяется к имени папки, а не к полному
+пути:
+
+```powershell
+python file_deduper.py "C:\Users\user\Documents" --skip-dir-name-regex "^(node_modules|\.git)$"
+```
+
 Скрипт рекурсивно обходит указанную папку и все ее подпапки, считает контрольную сумму SHA-256 для каждого файла и выводит только те группы, где одинаковая контрольная сумма найдена более чем у одного файла.
 
 В каждой группе сначала выводится имя файла, затем его размер в человекоудобном формате, а после этого папка, где он находится:
@@ -48,6 +56,13 @@ python folder_compare.py /path/to/first /path/to/second
 
 ```powershell
 python folder_compare.py "C:\Users\user\Documents\A" "C:\Users\user\Documents\B"
+```
+
+Чтобы пропустить папки по имени при обходе обеих сравниваемых папок, передайте
+регулярное выражение в `--skip-dir-name-regex`:
+
+```powershell
+python folder_compare.py "C:\Users\user\Documents\A" "C:\Users\user\Documents\B" --skip-dir-name-regex "^(node_modules|\.git)$"
 ```
 
 Скрипт рекурсивно обходит обе папки со всеми вложенными подпапками, считает SHA-256 для каждого файла и сравнивает контрольные суммы, относительные пути и имена файлов. Относительные пути считаются от переданных корневых папок. Размер файла не участвует в сравнении и выводится только для справки.

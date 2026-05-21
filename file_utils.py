@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -40,11 +41,22 @@ def configure_logger(logger_name: str, log_path: Path) -> logging.Logger:
     return logger
 
 
-def iter_files(folder: Path) -> Iterable[Path]:
+def iter_files(
+    folder: Path, skip_dir_name_pattern: re.Pattern[str] | None = None
+) -> Iterable[Path]:
     """Возвращает все обычные файлы в папке и ее подпапках."""
-    for path in folder.rglob("*"):
-        if path.is_file():
-            yield path
+    for root, dir_names, file_names in folder.walk():
+        if skip_dir_name_pattern is not None:
+            dir_names[:] = [
+                dir_name
+                for dir_name in dir_names
+                if not skip_dir_name_pattern.search(dir_name)
+            ]
+
+        for file_name in file_names:
+            path = root / file_name
+            if path.is_file():
+                yield path
 
 
 def calculate_checksum(file_path: Path) -> str:
@@ -71,3 +83,11 @@ def format_size(size_bytes: int) -> str:
         size /= 1024
 
     return f"{size_bytes} B"
+
+
+def compile_skip_dir_name_regex(value: str) -> re.Pattern[str]:
+    """Компилирует regex для имен папок, которые нужно пропустить."""
+    try:
+        return re.compile(value)
+    except re.error as error:
+        raise AttributeError(f"Некорректное регулярное выражение: {error}") from error
